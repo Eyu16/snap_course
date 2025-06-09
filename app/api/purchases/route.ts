@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Missing userId" }, { status: 400 });
     }
     const userPurchases: Purchase[] = purchases.filter(
-      (purchase) => purchase.userId === userID
+      (purchase: Purchase) => purchase.userId === userID
     );
 
     const validatePurchase = userPurchases.filter((purchase: Purchase) => {
