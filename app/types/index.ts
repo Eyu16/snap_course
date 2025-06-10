@@ -1,4 +1,4 @@
-import { Item } from "../data/item";
+import { Item } from "../data/items";
 
 export interface Purchase {
   userId: string;

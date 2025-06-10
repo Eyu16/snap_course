@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getItemById } from "@/app/data/item";
+import { getItemById } from "@/app/data/items";
 
 export async function POST(request: NextRequest) {
   try {

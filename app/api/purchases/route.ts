@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getItemById } from "@/app/data/item";
+import { getItemById } from "@/app/data/items";
 import { Purchase } from "@/app/types";
 
 // @ts-expect-error to ignore error
