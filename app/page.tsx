@@ -1,103 +1,268 @@
-import Image from "next/image";
+"use client";
+
+import { useEffect, useState } from "react";
+import { ITEMS, Item } from "@/app/data/items";
+import { Purchase, CurrentPurchaseWithSecret } from "@/app/types";
+
+// Import components
+import LoadingState from "@/app/components/LoadingState";
+import ErrorState from "@/app/components/ErrorState";
+import ItemsList from "@/app/components/ItemsList";
+import PurchaseHistory from "@/app/components/PurchaseHistory";
+import PurchaseSuccessModal from "@/app/components/PurchaseSuccessModal";
+import RefundInstructionsModal from "@/app/components/RefundInstructionsModal";
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [initialized, setInitialized] = useState(false);
+  const [userId, setUserId] = useState<string>("");
+  const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [modalState, setModalState] = useState<{
+    type: "purchase" | "refund" | null;
+    purchase?: CurrentPurchaseWithSecret;
+  }>({ type: null });
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+  useEffect(() => {
+    // Import TWA SDK dynamically to avoid SSR issues
+    const initTelegram = async () => {
+      try {
+        // Dynamic import of the TWA SDK
+        const WebApp = (await import("@twa-dev/sdk")).default;
+
+        // Check if running within Telegram
+        const isTelegram = WebApp.isExpanded !== undefined;
+
+        if (isTelegram) {
+          // Initialize Telegram Web App
+          WebApp.ready();
+          WebApp.expand();
+
+          // Get user ID from initData
+          if (WebApp.initDataUnsafe && WebApp.initDataUnsafe.user) {
+            // Access user data directly from the WebApp object
+            const user = WebApp.initDataUnsafe.user;
+            setUserId(user.id?.toString() || "");
+          } else {
+            setError("No user data available from Telegram");
+            setIsLoading(false);
+          }
+        } else {
+          // Not in Telegram, set an error message
+          setError(
+            "This application can only be accessed from within Telegram"
+          );
+          setIsLoading(false);
+        }
+
+        setInitialized(true);
+      } catch (e) {
+        console.error("Failed to initialize Telegram Web App:", e);
+        setError("Failed to initialize Telegram Web App");
+        setInitialized(true);
+        setIsLoading(false);
+      }
+    };
+
+    initTelegram();
+  }, []);
+
+  const fetchPurchases = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/purchases?userId=${userId}`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch purchases");
+      }
+
+      const data = await response.json();
+      setPurchases(data.purchases || []);
+    } catch (e) {
+      console.error("Error fetching purchases:", e);
+      setError("Failed to load purchase history");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handlePurchase = async (item: Item) => {
+    try {
+      setIsLoading(true); // Show loading indicator when starting purchase
+      // Create invoice link through our API
+      const response = await fetch("/api/create-invoice", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          itemId: item.id,
+          userId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to create invoice");
+      }
+
+      const { invoiceLink } = await response.json();
+      setIsLoading(false); // Hide loading before opening the invoice UI
+
+      // Import TWA SDK
+      const WebApp = (await import("@twa-dev/sdk")).default;
+
+      // Open the invoice using Telegram's WebApp SDK
+      WebApp.openInvoice(invoiceLink, async (status) => {
+        if (status === "paid") {
+          setIsLoading(true); // Show loading during processing after payment
+          // Payment was successful
+          // Generate a mock transaction ID since we don't have access to the real one from Telegram
+          // In a production app, this would be retrieved from your backend after the bot
+          // receives the pre_checkout_query and successful_payment updates
+          const transactionId = `txn_${Date.now()}_${Math.floor(
+            Math.random() * 10000
+          )}`;
+
+          try {
+            // Store the successful payment and get the secret code
+            const paymentResponse = await fetch("/api/payment-success", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                userId,
+                itemId: item.id,
+                transactionId,
+              }),
+            });
+
+            if (!paymentResponse.ok) {
+              throw new Error("Failed to record payment");
+            }
+
+            const { secret } = await paymentResponse.json();
+
+            // Show the success modal with secret code
+            setModalState({
+              type: "purchase",
+              purchase: {
+                item,
+                transactionId,
+                timestamp: Date.now(),
+                secret,
+              },
+            });
+
+            // Refresh purchases list
+            await fetchPurchases();
+          } catch (e) {
+            console.error("Error saving payment:", e);
+            alert(
+              "Your payment was successful, but we had trouble saving your purchase. Please contact support."
+            );
+            setIsLoading(false); // Ensure loading is turned off after error
+          }
+        } else if (status === "failed") {
+          alert("Payment failed. Please try again.");
+        } else if (status === "cancelled") {
+          // User cancelled the payment, no action needed
+          console.log("Payment was cancelled by user");
+        }
+      });
+    } catch (e) {
+      console.error("Error during purchase:", e);
+      alert(
+        `Failed to process purchase: ${
+          e instanceof Error ? e.message : "Unknown error"
+        }`
+      );
+      setIsLoading(false); // Ensure loading is turned off after error
+    }
+  };
+
+  const revealSecret = async (purchase: Purchase) => {
+    try {
+      // Fetch the secret from the server for this purchase
+      setIsLoading(true);
+      const response = await fetch(
+        `/api/get-secret?itemId=${purchase.itemId}&transactionId=${purchase.transactionId}`
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to retrieve secret code");
+      }
+
+      const { secret } = await response.json();
+      const item = ITEMS.find((i) => i.id === purchase.itemId);
+
+      if (item) {
+        setModalState({
+          type: "purchase",
+          purchase: {
+            item,
+            transactionId: purchase.transactionId,
+            timestamp: purchase.timestamp,
+            secret,
+          },
+        });
+      }
+    } catch (e) {
+      console.error("Error fetching secret:", e);
+      alert("Unable to retrieve the secret code. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRefund = (transactionId: string) => {
+    setModalState({ type: "refund" });
+  };
+
+  const handleRetry = () => {
+    window.location.reload();
+  };
+
+  // Close modals
+  const handleCloseModal = () => {
+    setModalState({ type: null });
+  };
+
+  if (!initialized || isLoading) {
+    return <LoadingState />;
+  }
+
+  // Error state (including not in Telegram)
+  if (error) {
+    return <ErrorState error={error} onRetry={handleRetry} />;
+  }
+
+  return (
+    <div className="max-w-md mx-auto p-4 pb-20">
+      {modalState.type === "purchase" &&
+        modalState.purchase &&
+        modalState.purchase.item && (
+          <PurchaseSuccessModal
+            currentPurchase={modalState.purchase}
+            onClose={handleCloseModal}
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+        )}
+
+      {modalState.type === "refund" && (
+        <RefundInstructionsModal onClose={handleCloseModal} />
+      )}
+
+      <h1 className="text-2xl font-bold mb-6 text-center">Digital Store</h1>
+
+      <ItemsList items={ITEMS} onPurchase={handlePurchase} />
+
+      <PurchaseHistory
+        purchases={purchases}
+        items={ITEMS}
+        onViewSecret={revealSecret}
+        onRefund={handleRefund}
+      />
     </div>
   );
 }
+

@@ -7,7 +7,7 @@ export interface Purchase {
   transactionId: string;
 }
 
-export interface currentPurchaseWithSecret {
+export interface CurrentPurchaseWithSecret {
   item: Item;
   transactionId: string;
   timestamp: number;
