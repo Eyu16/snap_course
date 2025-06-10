@@ -32,6 +32,7 @@ export default function Home() {
 
         // Check if running within Telegram
         const isTelegram = WebApp.isExpanded !== undefined;
+        console.log("Is Telegram Web App:", isTelegram);
 
         if (isTelegram) {
           // Initialize Telegram Web App
