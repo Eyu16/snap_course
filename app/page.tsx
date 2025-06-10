@@ -43,6 +43,7 @@ export default function Home() {
             // Access user data directly from the WebApp object
             const user = WebApp.initDataUnsafe.user;
             setUserId(user.id?.toString() || "");
+            setIsLoading(false);
           } else {
             setError("No user data available from Telegram");
             setIsLoading(false);
